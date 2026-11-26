@@ -7,7 +7,7 @@ const qrcode = require('qrcode-terminal');
 const logger = require('./utils/logger');
 const { getMessageContent } = require('./utils/common');
 const { checkRateLimit, rateLimitMessage, HEAVY_COMMANDS, STICKER_COMMANDS } = require('./utils/rateLimit');
-const { isOwner, addOwner, OWNERS } = require('./config/owner');
+const { isOwner, isOwnerMessage, addOwner, OWNERS } = require('./config/owner');
 const { installSoundStickerSupport } = require('./utils/soundSticker');
 const { installSendLimiter } = require('./utils/sendLimiter');
 const { installGroupCache, cachedGroupMetadata } = require('./utils/groupCache');
@@ -137,7 +137,7 @@ async function handleMessage(message) {
     isGroup,
     heavy: HEAVY_COMMANDS.has(cmd),
     sticker: STICKER_COMMANDS.has(cmd),
-    exempt: fromMe || isOwner(senderId),
+    exempt: fromMe || isOwnerMessage(message.key, senderId),
   });
   if (limit.limited) {
     if (limit.notify) await reply(rateLimitMessage(limit));
