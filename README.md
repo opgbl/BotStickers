@@ -30,6 +30,8 @@ así que puedes abrirlos y leer lo que hacen.
   son los sitios oficiales.
 - Cuando arranca, consulta en GitHub cuál es la versión actual de
   WhatsApp Web. Después solo habla con WhatsApp.
+- Si alguien usa `#s <link>`, el bot baja ese video del sitio del link
+  (TikTok, Instagram, YouTube, X o Facebook) con yt-dlp.
 
 #### Dónde quedan tus datos
 
@@ -67,6 +69,8 @@ https://github.com/user-attachments/assets/dbd03b35-76f3-4806-a1fa-f1958b2dbc60
 | --- | --- |
 | `#s` | Convierte una foto o video en sticker |
 | `#s "hola"` | Sticker con el texto "hola" abajo |
+| `#s <link>` | Sticker desde un link (TikTok, Instagram, YouTube, X, Facebook), recortado cuadrado y centrado |
+| `#s <link> completo` | Igual, pero con el video completo centrado (sin recortar) |
 | `#s+a` | Sticker de video con sonido |
 | `#toimg` | Sticker a imagen |
 | `#tomp4` | Sticker animado a video |
@@ -74,6 +78,22 @@ https://github.com/user-attachments/assets/dbd03b35-76f3-4806-a1fa-f1958b2dbc60
 | `#s-name "paquete" "autor"` | Cambia el nombre y el autor de un sticker |
 
 Manda el comando junto con la foto o el video, o respondiendo a un mensaje.
+
+**Videos largos:** si el video dura más de 12 s, sale en varios stickers de 8 s
+(máximo 4, o sea los primeros ~32 s). Con `#s+a` cada parte lleva su pedazo de audio.
+
+**Videos con texto arriba y abajo** (tipo "qué pasaría si"): si el video del centro es
+16:9, el bot lo detecta (es la parte que se mueve) y hace el sticker solo con esa franja.
+Funciona con links y con videos enviados. Agrega `completo` para no recortar
+(`#s+a completo`).
+
+**Links:** `#s <link>` necesita [yt-dlp](https://github.com/yt-dlp/yt-dlp). Es opcional:
+sin él, todo lo demás funciona igual.
+
+- Termux: `pkg install -y yt-dlp`
+- Windows: `winget install yt-dlp.yt-dlp`
+- Linux: instala el paquete `yt-dlp` o pon el ejecutable en `bin/yt-dlp`
+  (también se puede indicar la ruta con la variable `YTDLP_PATH`).
 
 # EL NUMERO TIENE QUE ESTAR TODO JUNTO CON CODIGO DE AREA DE PAÍS Y SIN ESPACIOS POR EJEMPLO:
 +502 1234 5678 : (Esto no debe tener espacios)

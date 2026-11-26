@@ -7,3 +7,4 @@ tmp/
 *.log
 *.zip
 *.mp4
+bin/

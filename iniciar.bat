@@ -16,6 +16,9 @@ if errorlevel 1 (
   exit /b 1
 )
 
+where yt-dlp >nul 2>nul
+if errorlevel 1 echo Opcional: para hacer stickers desde links instala yt-dlp con: winget install yt-dlp.yt-dlp
+
 node -e "process.exit(+process.versions.node.split('.')[0]<20?1:0)"
 if errorlevel 1 (
   echo Se necesita Node.js 20 o más nuevo. Descárgalo de https://nodejs.org
