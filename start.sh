@@ -41,6 +41,14 @@ if ! ffmpeg -hide_banner -encoders 2>/dev/null | grep -q libwebp; then
   echo "ffmpeg no tiene libwebp, los stickers no van a funcionar."
 fi
 
+if ! command -v yt-dlp >/dev/null && [ ! -x bin/yt-dlp ] && [ -z "$YTDLP_PATH" ]; then
+  if [ "$IS_TERMUX" = 1 ]; then
+    echo "Opcional: para hacer stickers desde links (#s <link>) instala yt-dlp: pkg install -y yt-dlp"
+  else
+    echo "Opcional: para hacer stickers desde links (#s <link>) instala yt-dlp."
+  fi
+fi
+
 MISSING=$(node -e '
   const deps = Object.keys(require("./package.json").dependencies || {});
   const fs = require("fs");
