@@ -71,6 +71,7 @@ https://github.com/user-attachments/assets/dbd03b35-76f3-4806-a1fa-f1958b2dbc60
 | `#s "hola"` | Sticker con el texto "hola" abajo |
 | `#s <link>` | Sticker desde un link (TikTok, Instagram, YouTube, X, Facebook), recortado cuadrado y centrado |
 | `#s <link> completo` | Igual, pero con el video completo centrado (sin recortar) |
+| `#s+a 4 <link>` | Empieza el sticker en el segundo 4 del video (también `1:05`, o con un video enviado: `#s 4`) |
 | `#s+a` | Sticker de video con sonido |
 | `#toimg` | Sticker a imagen |
 | `#tomp4` | Sticker animado a video |
@@ -86,6 +87,10 @@ Manda el comando junto con la foto o el video, o respondiendo a un mensaje.
 16:9, el bot lo detecta (es la parte que se mueve) y hace el sticker solo con esa franja.
 Funciona con links y con videos enviados. Agrega `completo` para no recortar
 (`#s+a completo`).
+
+**Desde qué segundo:** un número justo después del comando indica dónde arranca el sticker:
+`#s+a 4 <link>`, `#s 12.5` o `#s 1:05`. Si el video sigue siendo largo, desde ahí se parte
+en varios stickers igual que arriba.
 
 **Links:** `#s <link>` necesita [yt-dlp](https://github.com/yt-dlp/yt-dlp). Es opcional:
 sin él, todo lo demás funciona igual.

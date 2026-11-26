@@ -13,6 +13,8 @@ const SINGLE_MAX_SECONDS = 12; // hasta aquí va en un solo sticker
 const PART_SECONDS = 8; // largo de cada parte cuando hay que partir
 const MAX_PARTS = 4; // tope de stickers por video
 const MIN_TAIL_SECONDS = 3; // una cola más corta se pega a la parte anterior
+const MIN_START_LEFT = 0.5; // desde el inicio pedido debe quedar al menos esto de video
+const MAX_START_SECONDS = 3 * 3600;
 const PROBE_TIMEOUT_MS = 20 * 1000;
 const BAND_TIMEOUT_MS = 40 * 1000;
 const BAND_SAMPLE_SECONDS = 6;
@@ -81,6 +83,52 @@ function planParts(duration) {
   return { parts, truncated: duration - covered > 0.5, covered };
 }
 
+/**
+ * Igual que planParts pero arrancando en el segundo `from` del video.
+ * Las partes quedan con su segundo real (start ya incluye `from`).
+ * @returns {{ parts, truncated, covered, from }} covered = segundos usados desde `from`
+ */
+function planPartsFrom(duration, from = 0) {
+  if (!from) return { ...planParts(duration), from: 0 };
+  if (Number.isFinite(duration) && duration - from < MIN_START_LEFT) {
+    throw Object.assign(new Error(`inicio ${from} fuera del video (${duration})`), {
+      userMsg: `El video dura ${durationText(duration)}, no puede empezar en el segundo ${formatSeconds(from)}.`,
+    });
+  }
+  const rest = Number.isFinite(duration) ? duration - from : null;
+  const plan = planParts(rest);
+  const parts = plan.parts.map((p) => ({ start: round2(p.start + from), length: p.length }));
+  return { ...plan, parts, from };
+}
+
+/** 10 → "10 s"; 75 → "1:15". */
+const durationText = (secs) => (secs < 60 ? `${Math.round(secs)} s` : formatSeconds(Math.round(secs)));
+
+/** "75" → "1:15"; "4.5" → "4.5". */
+function formatSeconds(secs) {
+  const s = round2(secs);
+  if (s < 60) return `${s}`;
+  const m = Math.floor(s / 60);
+  const r = round2(s - m * 60);
+  return `${m}:${r < 10 ? '0' : ''}${r}`;
+}
+
+const START_RE = /^(\S+)\s+(?:(\d{1,3}):(\d{1,2}(?:[.,]\d+)?)|(\d{1,4}(?:[.,]\d+)?))s?(?=\s|$)/i;
+
+/**
+ * Lee el segundo de inicio escrito justo después del comando: "#s+a 4 <link>", "#s 1:05".
+ * @returns {{ start: number, body: string }} start = 0 si no hay; body sin el número
+ */
+function parseStartArg(body) {
+  const text = String(body || '');
+  const m = text.match(START_RE);
+  if (!m) return { start: 0, body: text };
+  const toNum = (s) => Number(String(s).replace(',', '.'));
+  const start = m[4] !== undefined ? toNum(m[4]) : toNum(m[2]) * 60 + toNum(m[3]);
+  if (!Number.isFinite(start) || start > MAX_START_SECONDS) return { start: 0, body: text };
+  return { start: round2(start), body: `${m[1]}${text.slice(m[0].length)}` };
+}
+
 /** Tamaño del video ya rotado (como lo ve el filtro). */
 function parseFrameSize(stderr) {
   const m = String(stderr || '').match(/Video:.*?\b(\d{2,5})x(\d{2,5})\b/);
@@ -114,11 +162,13 @@ function bandFromDetection(frame, box) {
  * Busca la franja que se mueve (el video "de verdad") comparando cada fotograma
  * con el anterior: el texto y el fondo quietos dan diferencia 0. La diferencia se pasa
  * a blanco/negro para que cropdetect no la diluya al promediar filas y columnas enteras.
+ * @param {number} [from] segundo desde el que se analiza (el inicio pedido por el usuario)
  * @returns {Promise<string|null>} "crop=w:h:x:y" o null si no hay franja 16:9
  */
-async function detectCenterBand(file) {
+async function detectCenterBand(file, from = 0) {
+  const seek = from > 0 ? ['-ss', String(from)] : [];
   const { stderr } = await runFfmpegRaw([
-    '-hide_banner', '-t', String(BAND_SAMPLE_SECONDS), '-i', file, '-an',
+    '-hide_banner', ...seek, '-t', String(BAND_SAMPLE_SECONDS), '-i', file, '-an',
     '-vf', 'tblend=all_mode=difference,format=gray,' +
       `lut=y='if(gt(val,${BAND_PIXEL_DIFF}),255,0)',` +
       `cropdetect=limit=${BAND_MOTION_LIMIT}:round=2:reset=0`,
@@ -133,8 +183,13 @@ async function detectCenterBand(file) {
 /** Mensaje para avisar que el video va en varias partes. */
 function partsNotice(duration, plan) {
   const n = plan.parts.length;
+  const covered = Math.round(plan.covered);
+  if (plan.from) {
+    const lead = `Desde el segundo ${formatSeconds(plan.from)} quedan ${Math.round(duration - plan.from)} s`;
+    return plan.truncated ? `${lead}. Van ${covered} s en ${n} stickers.` : `${lead}, va en ${n} stickers.`;
+  }
   const secs = Math.round(duration);
-  if (plan.truncated) return `El video dura ${secs} s. Van los primeros ${Math.round(plan.covered)} s en ${n} stickers.`;
+  if (plan.truncated) return `El video dura ${secs} s. Van los primeros ${covered} s en ${n} stickers.`;
   return `El video dura ${secs} s, va en ${n} stickers.`;
 }
 
@@ -144,7 +199,9 @@ module.exports = {
   MAX_PARTS,
   probeDuration,
   planParts,
+  planPartsFrom,
+  parseStartArg,
   detectCenterBand,
   partsNotice,
-  _internal: { parseDuration, parseFrameSize, bandFromDetection },
+  _internal: { parseDuration, parseFrameSize, bandFromDetection, formatSeconds },
 };

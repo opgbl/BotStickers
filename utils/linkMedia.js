@@ -120,10 +120,10 @@ async function detectBorders(file) {
  * recorta un cuadrado. En videos horizontales queda centrado; en verticales se carga
  * hacia arriba (TOP_BIAS) porque ahí suelen ir las caras.
  */
-async function buildLinkFilter(file, full) {
+async function buildLinkFilter(file, full, from = 0) {
   if (!full) {
     // TikToks con texto arriba y abajo: si hay una franja 16:9 que se mueve, solo esa.
-    const band = await detectCenterBand(file);
+    const band = await detectCenterBand(file, from);
     if (band) return band;
   }
   const parts = [];

@@ -3,7 +3,7 @@
 // Pruebas: node --test utils/
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { planParts, partsNotice, _internal } = require('./videoParts');
+const { planParts, planPartsFrom, parseStartArg, partsNotice, _internal } = require('./videoParts');
 
 const { parseDuration, parseFrameSize, bandFromDetection } = _internal;
 
@@ -89,4 +89,32 @@ test('caso real del ensayo: movimiento 696x600 con lados quietos → franja comp
 
 test('video horizontal: nunca recorta la franja', () => {
   assert.equal(bandFromDetection({ w: 1280, h: 720 }, { w: 1280, h: 600, x: 0, y: 60 }), null);
+});
+
+test('parseStartArg: número tras el comando', () => {
+  assert.deepEqual(parseStartArg('#s+a 4'), { start: 4, body: '#s+a' });
+  assert.deepEqual(parseStartArg('#s 4.5 "hola"'), { start: 4.5, body: '#s "hola"' });
+  assert.deepEqual(parseStartArg('#s 4,5s'), { start: 4.5, body: '#s' });
+  assert.deepEqual(parseStartArg('#s 1:05 completo'), { start: 65, body: '#s completo' });
+});
+
+test('parseStartArg: sin número o texto normal no cambia nada', () => {
+  assert.deepEqual(parseStartArg('#s+a'), { start: 0, body: '#s+a' });
+  assert.deepEqual(parseStartArg('#s "hola"'), { start: 0, body: '#s "hola"' });
+  assert.deepEqual(parseStartArg('#s 4x4 al limite'), { start: 0, body: '#s 4x4 al limite' });
+});
+
+test('planPartsFrom: arranca en el segundo pedido', () => {
+  assert.deepEqual(planPartsFrom(30, 4).parts, [{ start: 4, length: 8 }, { start: 12, length: 8 }, { start: 20, length: 10 }]);
+  assert.deepEqual(planPartsFrom(10, 4).parts, [{ start: 4, length: 6 }]);
+  assert.deepEqual(planPartsFrom(null, 4).parts, [{ start: 4, length: 12 }]);
+});
+
+test('planPartsFrom: inicio fuera del video da mensaje claro', () => {
+  assert.throws(() => planPartsFrom(10, 12), (e) => /dura 10 s, no puede empezar en el segundo 12/.test(e.userMsg));
+});
+
+test('aviso de partes con inicio', () => {
+  assert.equal(partsNotice(30, planPartsFrom(30, 4)), 'Desde el segundo 4 quedan 26 s, va en 3 stickers.');
+  assert.equal(partsNotice(100, planPartsFrom(100, 65)), 'Desde el segundo 1:05 quedan 35 s. Van 32 s en 4 stickers.');
 });

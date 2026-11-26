@@ -12,7 +12,7 @@ const { sendSoundSticker } = require('../utils/soundSticker');
 const { FfmpegBusyError } = require('../utils/ffmpegQueue');
 const { findLink, parseLinkBody, downloadLink, buildLinkFilter } = require('../utils/linkMedia');
 const {
-  SINGLE_MAX_SECONDS, probeDuration, planParts, detectCenterBand, partsNotice,
+  SINGLE_MAX_SECONDS, probeDuration, planPartsFrom, parseStartArg, detectCenterBand, partsNotice,
 } = require('../utils/videoParts');
 
 ffmpeg.setFfmpegPath(require('../utils/ffmpegBin').resolveFfmpegPath());
@@ -285,8 +285,11 @@ async function deliverSticker(sock, message, { webpBuffer, sound, creatorName })
 /**
  * Convierte la imagen o el video en sticker(s) y los envía.
  * Videos de más de 12 s se parten en varios stickers (ver utils/videoParts).
+ * `from` = segundo donde arranca (el número que escriben tras el comando).
  */
-async function makeAndSendStickers({ sock, message, reply, input, isVideo, overlayText, withSound, creatorName, preFilter }) {
+async function makeAndSendStickers({
+  sock, message, reply, input, isVideo, overlayText, withSound, creatorName, preFilter, from = 0,
+}) {
   if (!isVideo) {
     const webpBuffer = await convertToWebP(input, false, overlayText, 0, preFilter);
     await deliverSticker(sock, message, { webpBuffer, creatorName });
@@ -294,7 +297,7 @@ async function makeAndSendStickers({ sock, message, reply, input, isVideo, overl
   }
 
   const duration = await probeDuration(input);
-  const plan = planParts(duration);
+  const plan = planPartsFrom(duration, from);
   if (plan.parts.length > 1) await reply(partsNotice(duration, plan));
   const levels = withSound ? VIDEO_LEVELS.length : NORMAL_VIDEO_LEVELS;
 
@@ -318,22 +321,32 @@ async function makeAndSendStickers({ sock, message, reply, input, isVideo, overl
   return sendReaction(sock, message, '✅');
 }
 
-/** #s <link> [completo] ["texto"]: baja el video del link y lo vuelve sticker centrado. */
+/**
+ * Opciones escritas tras el comando: "completo", el segundo de inicio y el texto.
+ * El número solo cuenta como inicio en videos; en imágenes sigue siendo texto.
+ */
+function parseCommandOptions(body, isVideo) {
+  const { body: noLink, full } = parseLinkBody(body);
+  if (!isVideo) return { full, from: 0, overlayText: parseOverlayText(noLink) };
+  const { start, body: rest } = parseStartArg(noLink);
+  return { full, from: start, overlayText: parseOverlayText(rest) };
+}
+
+/** #s [segundo] <link> [completo] ["texto"]: baja el video del link y lo vuelve sticker centrado. */
 async function stickerFromLink({ message, sock, reply, fail, link, body, withSound, creatorName }) {
   if (activeJobs >= MAX_STICKER_JOBS) return sendReaction(sock, message, '🕐');
   activeJobs++;
   let input = null;
   try {
     await sendReaction(sock, message, '⏳');
-    const { body: cleanBody, full } = parseLinkBody(body);
     const downloaded = await downloadLink(link);
     input = downloaded.file;
     if (withSound && !downloaded.isVideo) return await fail('#s+a es para videos con audio. Ese link es una imagen.');
 
-    const preFilter = await buildLinkFilter(input, full);
+    const { full, from, overlayText } = parseCommandOptions(body, downloaded.isVideo);
+    const preFilter = await buildLinkFilter(input, full, from);
     await makeAndSendStickers({
-      sock, message, reply, input, isVideo: downloaded.isVideo,
-      overlayText: parseOverlayText(cleanBody), withSound, creatorName, preFilter,
+      sock, message, reply, input, isVideo: downloaded.isVideo, overlayText, withSound, creatorName, preFilter, from,
     });
   } catch (error) {
     if (error instanceof FfmpegBusyError) return sendReaction(sock, message, '🕐');
@@ -381,11 +394,10 @@ const handler = async (message, sock, reply) => {
     await fs.writeFile(input, buffer);
 
     // "completo" = sin recortar la franja del centro
-    const { body: cleanBody, full } = parseLinkBody(body);
-    const preFilter = media.isVideo && !full ? await detectCenterBand(input) : null;
+    const { full, from, overlayText } = parseCommandOptions(body, media.isVideo);
+    const preFilter = media.isVideo && !full ? await detectCenterBand(input, from) : null;
     await makeAndSendStickers({
-      sock, message, reply, input, isVideo: media.isVideo,
-      overlayText: parseOverlayText(cleanBody), withSound, creatorName, preFilter,
+      sock, message, reply, input, isVideo: media.isVideo, overlayText, withSound, creatorName, preFilter, from,
     });
   } catch (error) {
     if (error instanceof FfmpegBusyError) return sendReaction(sock, message, '🕐');
