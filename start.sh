@@ -23,11 +23,26 @@ if [ "$IS_TERMUX" = 1 ]; then
   [ -f "$PREFIX/share/fonts/TTF/DejaVuSans-Bold.ttf" ] || NEED="$NEED ttf-dejavu"
   if [ -n "$NEED" ]; then
     echo "Instalando$NEED"
-    pkg update -y && pkg install -y $NEED || { echo "No se pudo instalar:$NEED"; exit 1; }
+    pkg update -y && pkg upgrade -y && pkg install -y $NEED || { echo "No se pudo instalar:$NEED"; exit 1; }
   fi
 else
   command -v node >/dev/null || { echo "Falta Node.js 20 o más nuevo."; exit 1; }
   command -v ffmpeg >/dev/null || { echo "Falta ffmpeg."; exit 1; }
+fi
+
+if ! node -v >/dev/null 2>&1; then
+  echo "Node.js está instalado pero no arranca."
+  if [ "$IS_TERMUX" = 1 ]; then
+    echo "Ejecuta: pkg update && pkg upgrade -y"
+    echo "Después vuelve a abrir el bot con: bash start.sh"
+  fi
+  exit 1
+fi
+
+if ! ffmpeg -version >/dev/null 2>&1; then
+  echo "ffmpeg está instalado pero no arranca."
+  [ "$IS_TERMUX" = 1 ] && echo "Ejecuta: pkg update && pkg upgrade -y"
+  exit 1
 fi
 
 check_update() {
