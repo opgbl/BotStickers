@@ -9,16 +9,15 @@ const logger = require('../utils/logger');
 const { downloadContentFromMessage } = require('../utils/baileys');
 const { sendReaction, getMessageContent, unwrapMessage, filepathTemp } = require('../utils/common');
 const { sendSoundSticker } = require('../utils/soundSticker');
-const { FfmpegBusyError } = require('../utils/ffmpegQueue');
-const { findLink, parseLinkBody, downloadLink, buildLinkFilter } = require('../utils/linkMedia');
+const { FfmpegBusyError, hasPriority } = require('../utils/ffmpegQueue');
 const {
-  SINGLE_MAX_SECONDS, probeDuration, planParts, detectCenterBand, partsNotice,
-} = require('../utils/videoParts');
+  findLink, parseLinkBody, downloadLink, buildLinkFilter, isYtDlpMissing, MISSING_MSG,
+} = require('../utils/linkMedia');
 
 ffmpeg.setFfmpegPath(require('../utils/ffmpegBin').resolveFfmpegPath());
 
 const MAX_STICKER_JOBS = 30;
-const MAX_VIDEO_DURATION = SINGLE_MAX_SECONDS;
+const MAX_VIDEO_DURATION = 12;
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const STICKER_SIZE = 512;
 const TARGET_ANIMATED = 480 * 1024;
@@ -57,7 +56,7 @@ const VIDEO_LEVELS = [
   { fps: 10, q: 1 },
   { fps: 8, q: 1 },
 ];
-const NORMAL_VIDEO_LEVELS = 4;
+const SHORTER_SECONDS = [8, 5];
 
 const FONT_FILE = [
   'C:/Windows/Fonts/arialbd.ttf',
@@ -71,15 +70,11 @@ const FONT_FILE = [
 ].find((f) => existsSync(f)) || null;
 
 let activeJobs = 0;
+const toldMissing = new Set();
 
-/** -ss antes del -i: arranca la parte en su segundo (preciso porque se recodifica). */
-const seekOpts = (part) => (part && part.start > 0 ? ['-ss', String(part.start)] : []);
-
-function runFfmpeg(input, outputOptions, output, format, filter, inputOptions = []) {
+function runFfmpeg(input, outputOptions, output, format, filter) {
   return new Promise((resolve, reject) => {
-    const cmd = ffmpeg(input);
-    if (inputOptions.length) cmd.inputOptions(inputOptions);
-    cmd.outputOptions(outputOptions);
+    const cmd = ffmpeg(input).outputOptions(outputOptions);
     if (filter) cmd.videoFilters(filter);
     if (format) cmd.toFormat(format);
     cmd.on('end', resolve).on('error', reject).save(output);
@@ -161,10 +156,10 @@ async function downloadMedia(content, type) {
   return Buffer.concat(chunks);
 }
 
-async function convertToWebP(input, isVideo, overlayText, maxLevels, preFilter = null, part = null) {
+async function convertToWebP(input, isVideo, overlayText, canShorten, preFilter = null) {
   const output = filepathTemp('stk_out', '.webp');
   const target = isVideo ? TARGET_ANIMATED : TARGET_STATIC;
-  const levels = isVideo ? maxLevels : IMAGE_QUALITY.length;
+  const levels = isVideo ? VIDEO_LEVELS.length : IMAGE_QUALITY.length;
   const textPart = overlayText ? `,${buildDrawtextFilter(overlayText)}` : '';
   const base = preFilter ? `${preFilter},${BASE_FILTER}` : BASE_FILTER;
   let best = null;
@@ -172,12 +167,21 @@ async function convertToWebP(input, isVideo, overlayText, maxLevels, preFilter =
   try {
     for (let level = 0; level < levels; level++) {
       const filter = isVideo ? `${base},fps=${VIDEO_LEVELS[level].fps}${textPart}` : `${base}${textPart}`;
-      const opts = isVideo ? videoOpts(level, part?.length) : imageOpts(level);
-      await runFfmpeg(input, opts, output, 'webp', filter, isVideo ? seekOpts(part) : []);
+      await runFfmpeg(input, isVideo ? videoOpts(level) : imageOpts(level), output, 'webp', filter);
       const result = await fs.readFile(output);
       if (result.length <= target) return result;
       if (!best || result.length < best.length) best = result;
       if (isVideo && result.length > target * 1.8 && level + 2 < levels) level++;
+    }
+    if (isVideo && canShorten) {
+      const last = VIDEO_LEVELS.length - 1;
+      const filter = `${base},fps=${VIDEO_LEVELS[last].fps}${textPart}`;
+      for (const seconds of SHORTER_SECONDS) {
+        await runFfmpeg(input, videoOpts(last, seconds), output, 'webp', filter);
+        const result = await fs.readFile(output);
+        if (result.length <= target) return result;
+        if (result.length < best.length) best = result;
+      }
     }
     logger.warn(`Sticker quedó en ${(best.length / 1024).toFixed(0)}KB tras máxima compresión`);
     return best;
@@ -223,15 +227,15 @@ async function audioWaveform(oggPath) {
   }
 }
 
-async function extractAudio(input, part) {
+async function extractAudio(input, seconds) {
   const output = filepathTemp('stk_aud', '.ogg');
-  const duration = Math.min(part?.length || MAX_VIDEO_DURATION, MAX_VIDEO_DURATION);
+  const duration = Math.min(seconds || MAX_VIDEO_DURATION, MAX_VIDEO_DURATION);
   try {
     await runFfmpeg(input, [
       '-vn', '-map', '0:a:0', '-af', 'aresample=48000:async=1:first_pts=0',
       '-t', String(duration), '-c:a', 'libopus', '-b:a', '48k',
       '-ac', '1', '-ar', '48000', '-application', 'audio', '-map_metadata', '-1',
-    ], output, 'ogg', null, seekOpts(part));
+    ], output, 'ogg');
     const audio = await fs.readFile(output);
     const real = oggOpusDuration(audio);
     if (audio.length <= 1024 || (real !== null && real < 0.3)) return null;
@@ -274,53 +278,36 @@ function getErrorMessage(error) {
   return 'Error al procesar el sticker.';
 }
 
-/** Envía un sticker (con sonido si hay). No pone la reacción final. */
-async function deliverSticker(sock, message, { webpBuffer, sound, creatorName }) {
+async function makeAndSendSticker({ sock, message, reply, input, isVideo, overlayText, withSound, creatorName, seconds, preFilter }) {
   const jid = message.key.remoteJid;
+  const audioJob = withSound ? extractAudio(input, seconds) : null;
+  const webpBuffer = await convertToWebP(
+    input, isVideo, overlayText, !withSound, preFilter,
+  ).finally(() => audioJob);
+  const sound = await audioJob;
   const sticker = await addExifMetadata(webpBuffer, creatorName);
-  if (sound) return sendSoundSticker(sock, jid, { sticker, ...sound }, { quoted: message });
-  return sock.sendMessage(jid, { sticker, secureMetaServiceLabel: true }, { quoted: message });
-}
 
-/**
- * Convierte la imagen o el video en sticker(s) y los envía.
- * Videos de más de 12 s se parten en varios stickers (ver utils/videoParts).
- */
-async function makeAndSendStickers({ sock, message, reply, input, isVideo, overlayText, withSound, creatorName, preFilter }) {
-  if (!isVideo) {
-    const webpBuffer = await convertToWebP(input, false, overlayText, 0, preFilter);
-    await deliverSticker(sock, message, { webpBuffer, creatorName });
+  if (sound) {
+    await sendSoundSticker(sock, jid, { sticker, ...sound }, { quoted: message });
     return sendReaction(sock, message, '✅');
   }
+  if (withSound) await reply('El video no tiene audio, va como sticker normal.');
 
-  const duration = await probeDuration(input);
-  const plan = planParts(duration);
-  if (plan.parts.length > 1) await reply(partsNotice(duration, plan));
-  const levels = withSound ? VIDEO_LEVELS.length : NORMAL_VIDEO_LEVELS;
-
-  let sent = 0;
-  for (const part of plan.parts) {
-    try {
-      const audioJob = withSound ? extractAudio(input, part) : null;
-      const webpBuffer = await convertToWebP(input, true, overlayText, levels, preFilter, part)
-        .finally(() => audioJob);
-      const sound = await audioJob;
-      if (withSound && !sound && sent === 0) await reply('El video no tiene audio, va como sticker normal.');
-      await deliverSticker(sock, message, { webpBuffer, sound, creatorName });
-      sent++;
-    } catch (error) {
-      if (sent === 0) throw error;
-      logger.error(`Error en la parte ${sent + 1} del sticker: ${error?.stack || error}`);
-      await reply(`Solo salieron ${sent} de ${plan.parts.length} stickers.`);
-      break;
-    }
-  }
-  return sendReaction(sock, message, '✅');
+  await Promise.all([
+    sock.sendMessage(jid, { sticker, secureMetaServiceLabel: true }, { quoted: message }),
+    sendReaction(sock, message, '✅'),
+  ]);
 }
 
 /** #s <link> [completo] ["texto"]: baja el video del link y lo vuelve sticker centrado. */
 async function stickerFromLink({ message, sock, reply, fail, link, body, withSound, creatorName }) {
-  if (activeJobs >= MAX_STICKER_JOBS) return sendReaction(sock, message, '🕐');
+  const sender = message.key.participant || message.key.remoteJid;
+  if (isYtDlpMissing()) {
+    if (toldMissing.has(sender)) return sendReaction(sock, message, '❌');
+    toldMissing.add(sender);
+    return fail(MISSING_MSG);
+  }
+  if (activeJobs >= MAX_STICKER_JOBS && !hasPriority()) return sendReaction(sock, message, '🕐');
   activeJobs++;
   let input = null;
   try {
@@ -331,13 +318,14 @@ async function stickerFromLink({ message, sock, reply, fail, link, body, withSou
     if (withSound && !downloaded.isVideo) return await fail('#s+a es para videos con audio. Ese link es una imagen.');
 
     const preFilter = await buildLinkFilter(input, full);
-    await makeAndSendStickers({
+    await makeAndSendSticker({
       sock, message, reply, input, isVideo: downloaded.isVideo,
       overlayText: parseOverlayText(cleanBody), withSound, creatorName, preFilter,
     });
   } catch (error) {
     if (error instanceof FfmpegBusyError) return sendReaction(sock, message, '🕐');
     logger.error(`Error en #s con link: ${error?.stack || error}`);
+    if (error?.userMsg === MISSING_MSG) toldMissing.add(sender);
     await fail(getErrorMessage(error));
   } finally {
     activeJobs--;
@@ -362,7 +350,11 @@ const handler = async (message, sock, reply) => {
   const media = getMedia(message);
   const link = !media || media.invalid ? findLink(body) : null;
   if (link) return stickerFromLink({ message, sock, reply, fail, link, body, withSound, creatorName });
-  if (!media) return fail(withSound ? 'Responde a un video con "#s+a".' : 'Responde a una imagen o video con "#s", o manda "#s <link>" de TikTok, Instagram, YouTube, X o Facebook.');
+  if (!media) {
+    return fail(withSound
+      ? 'Responde a un video con "#s+a", o manda "#s+a <link>".'
+      : 'Responde a una imagen o video con "#s", o manda "#s <link>" de TikTok, Facebook o X.');
+  }
   if (media.invalid) return fail('Formato no compatible. Envía una imagen, un video o un gif.');
   if (media.unsupported) return fail('Formato no compatible. Envía JPG, PNG, GIF, WEBP, BMP, MP4, WEBM, MOV, AVI o 3GP.');
   if (withSound && !media.isVideo) return fail('#s+a es para videos con audio. Para imágenes usa #s.');
@@ -370,7 +362,7 @@ const handler = async (message, sock, reply) => {
   const declaredSize = Number(media.content.fileLength) || 0;
   if (declaredSize > MAX_FILE_SIZE) return fail(sizeText(declaredSize));
 
-  if (activeJobs >= MAX_STICKER_JOBS) return sendReaction(sock, message, '🕐');
+  if (activeJobs >= MAX_STICKER_JOBS && !hasPriority()) return sendReaction(sock, message, '🕐');
   activeJobs++;
 
   const input = filepathTemp('stk_in', `.${media.ext}`);
@@ -380,12 +372,9 @@ const handler = async (message, sock, reply) => {
     if (buffer.length > MAX_FILE_SIZE) return await fail(sizeText(buffer.length));
     await fs.writeFile(input, buffer);
 
-    // "completo" = sin recortar la franja del centro
-    const { body: cleanBody, full } = parseLinkBody(body);
-    const preFilter = media.isVideo && !full ? await detectCenterBand(input) : null;
-    await makeAndSendStickers({
-      sock, message, reply, input, isVideo: media.isVideo,
-      overlayText: parseOverlayText(cleanBody), withSound, creatorName, preFilter,
+    await makeAndSendSticker({
+      sock, message, reply, input, isVideo: media.isVideo, overlayText: parseOverlayText(body),
+      withSound, creatorName, seconds: media.content.seconds,
     });
   } catch (error) {
     if (error instanceof FfmpegBusyError) return sendReaction(sock, message, '🕐');
@@ -397,9 +386,4 @@ const handler = async (message, sock, reply) => {
   }
 };
 
-module.exports = {
-  command: '#s',
-  aliases: ['#sticker', '#stiker', '#s+a'],
-  handler,
-  _internal: { convertToWebP, extractAudio, makeAndSendStickers },
-};
+module.exports = { command: '#s', aliases: ['#sticker', '#stiker', '#s+a'], handler };

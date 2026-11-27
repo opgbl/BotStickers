@@ -8,16 +8,19 @@ const logger = require('./utils/logger');
 const { getMessageContent } = require('./utils/common');
 const { checkRateLimit, rateLimitMessage, HEAVY_COMMANDS, STICKER_COMMANDS } = require('./utils/rateLimit');
 const { isOwner, isOwnerMessage, addOwner, OWNERS } = require('./config/owner');
+const { isChatAllowed } = require('./config/settings');
+const { findLink } = require('./utils/linkMedia');
 const { installSoundStickerSupport } = require('./utils/soundSticker');
 const { installSendLimiter } = require('./utils/sendLimiter');
 const { installGroupCache, cachedGroupMetadata } = require('./utils/groupCache');
 const { startTempCleaner } = require('./utils/tempCleaner');
-require('./utils/ffmpegQueue').installFluentFfmpegQueue();
+const { installFluentFfmpegQueue, runWithPriority } = require('./utils/ffmpegQueue');
+installFluentFfmpegQueue();
 
 const commands = new Map();
-for (const name of ['stickers', 'toimg', 'tomp4', 'namesticker', 'recortar']) {
+for (const name of ['stickers', 'toimg', 'tomp4', 'namesticker', 'recortar', 'owner']) {
   const plugin = require(`./plugins/${name}`);
-  for (const c of [plugin.command, ...(plugin.aliases || [])]) commands.set(c, plugin.handler);
+  for (const c of [plugin.command, ...(plugin.aliases || [])]) commands.set(c, plugin);
 }
 
 const AUTH_DIR = path.join(__dirname, 'baileys_auth_info');
@@ -25,6 +28,26 @@ const QR_FILE = path.join(__dirname, 'qr.txt');
 let pairingNumber = (process.env.PAIRING_NUMBER || '').replace(/\D/g, '');
 let pairingAsked = !!pairingNumber;
 let sessionReset = false;
+
+function confirmWithEnter(rl) {
+  return new Promise((resolve) => {
+    const done = (ok) => {
+      rl.off('line', onLine);
+      rl.off('SIGINT', onCancel);
+      resolve(ok);
+    };
+    const onLine = () => done(true);
+    const onCancel = () => {
+      rl.setPrompt('');
+      rl.write(null, { ctrl: true, name: 'u' });
+      done(false);
+    };
+    rl.on('line', onLine);
+    rl.on('SIGINT', onCancel);
+    rl.setPrompt('Presiona Enter para confirmar o Ctrl + C para escribirlo otra vez. ');
+    rl.prompt();
+  });
+}
 
 function askPairingNumber() {
   if (!process.stdin.isTTY) return Promise.resolve('');
@@ -44,9 +67,14 @@ function askPairingNumber() {
     console.log('\nEscribe el número de WhatsApp del bot todo junto, sin espacios y con el código de país.');
     console.log('Ejemplo: 50212345678 o +50212345678.');
     const num = (await question('Número: ')).replace(/\D/g, '');
-    if (num.length >= 8 && num.length <= 15) return num;
+    if (num.length >= 8 && num.length <= 15) return confirmNumber(num);
     console.log('Número no válido. Escríbelo todo junto con el código de país, por ejemplo 50212345678 o +50212345678.');
     return askNumber();
+  };
+  const confirmNumber = async (num) => {
+    console.log(`\n¿Estás seguro de que +${num} es el número que vas a vincular?`);
+    console.log('Si te equivocaste, el código no va a funcionar y vas a tener que cerrar el bot y empezar otra vez.');
+    return (await confirmWithEnter(rl)) ? num : askNumber();
   };
   return askMode()
     .then((mode) => (mode === '1' ? askNumber() : ''))
@@ -58,24 +86,30 @@ function askOwnerNumber() {
   const readline = require('readline');
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   console.log('\nEscribe tu número personal todo junto, sin espacios y con el código de país.');
-  console.log('Ejemplo: 50212345678 o +50212345678. Déjalo vacío para omitir.');
+  console.log('Ejemplo: 50212345678 o +50212345678.');
   const ask = () => new Promise((resolve) => {
     rl.question('Número del dueño: ', (answer) => {
       const num = String(answer || '').replace(/\D/g, '');
-      if (!num) return resolve();
+      if (!num) return resolve(ask());
       if (num.length < 8 || num.length > 15) {
         console.log('Número no válido. Escríbelo todo junto con el código de país, por ejemplo 50212345678 o +50212345678.');
         return resolve(ask());
       }
-      try {
-        addOwner(num);
-        console.log(`Dueño guardado: ${num}`);
-      } catch (e) {
-        console.log(`No se pudo guardar el dueño: ${e.message}`);
-      }
-      resolve();
+      resolve(confirm(num));
     });
   });
+  const confirm = async (num) => {
+    console.log(`\n¿Estás seguro de que +${num} es tu número de WhatsApp?`);
+    console.log('Si no es tu número, el bot no te va a reconocer como dueño y vas a tener que esperar entre comandos como los demás.');
+    console.log('Además, la persona que tenga ese número podrá usar el bot sin límites.');
+    if (!(await confirmWithEnter(rl))) return ask();
+    try {
+      addOwner(num);
+      console.log(`Dueño guardado: ${num}`);
+    } catch (e) {
+      console.log(`No se pudo guardar el dueño: ${e.message}`);
+    }
+  };
   return ask().finally(() => rl.close());
 }
 
@@ -118,11 +152,13 @@ async function handleMessage(message) {
   const body = getMessageContent(message);
   if (!body) return;
   const cmd = body.split(/\s+/, 1)[0].toLowerCase();
-  const handler = commands.get(cmd);
-  if (!handler) return;
+  const plugin = commands.get(cmd);
+  if (!plugin) return;
 
   const isGroup = chatId.endsWith('@g.us');
   const senderId = (message.key.participant || chatId).replace(/:\d+@/, '@');
+  const owner = fromMe || isOwnerMessage(message.key, senderId);
+  if (!owner && (plugin.ownerOnly || !isChatAllowed(isGroup, chatId))) return;
 
   const reply = async (txt) => {
     try {
@@ -135,9 +171,9 @@ async function handleMessage(message) {
   const limit = checkRateLimit(senderId, {
     chatId,
     isGroup,
-    heavy: HEAVY_COMMANDS.has(cmd),
+    heavy: HEAVY_COMMANDS.has(cmd) || (STICKER_COMMANDS.has(cmd) && !!findLink(body)),
     sticker: STICKER_COMMANDS.has(cmd),
-    exempt: fromMe || isOwnerMessage(message.key, senderId),
+    exempt: owner,
   });
   if (limit.limited) {
     if (limit.notify) await reply(rateLimitMessage(limit));
@@ -145,7 +181,8 @@ async function handleMessage(message) {
   }
 
   try {
-    await handler(message, sock, reply, isGroup);
+    const run = () => plugin.handler(message, sock, reply, isGroup, body);
+    await (owner ? runWithPriority(run) : run());
   } catch (e) {
     logger.error(`Error ejecutando ${cmd}: ${e?.stack || e}`);
   }

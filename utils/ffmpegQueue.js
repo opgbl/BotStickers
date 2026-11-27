@@ -1,12 +1,17 @@
 'use strict';
 
 const { execFile } = require('child_process');
+const { AsyncLocalStorage } = require('async_hooks');
 const logger = require('./logger');
 
-const MAX_CONCURRENT = Number(process.env.FFMPEG_MAX_CONCURRENT) || 2;
+const MAX_CONCURRENT = Number(process.env.FFMPEG_MAX_CONCURRENT) || 3;
 const MAX_WAITING = 30;
 
 const state = global.__ffmpegQueue || (global.__ffmpegQueue = { active: 0, waiting: [] });
+const priority = new AsyncLocalStorage();
+
+const runWithPriority = (fn) => priority.run(true, fn);
+const hasPriority = () => priority.getStore() === true;
 
 class FfmpegBusyError extends Error {
   constructor() {
@@ -25,12 +30,17 @@ function acquire() {
         released = true;
         state.active--;
         const next = state.waiting.shift();
-        if (next) next();
+        if (next) next.grant();
       });
     };
     if (state.active < MAX_CONCURRENT) return grant();
+    if (hasPriority()) {
+      const i = state.waiting.findIndex((w) => !w.urgent);
+      state.waiting.splice(i < 0 ? state.waiting.length : i, 0, { grant, urgent: true });
+      return;
+    }
     if (state.waiting.length >= MAX_WAITING) return reject(new FfmpegBusyError());
-    state.waiting.push(grant);
+    state.waiting.push({ grant, urgent: false });
     if (state.waiting.length % 5 === 0) {
       logger.info(`[ffmpegQueue] ${state.waiting.length} trabajos en espera (${state.active} activos).`);
     }
@@ -83,4 +93,4 @@ function installFluentFfmpegQueue() {
   proto._spawnFfmpeg = queued;
 }
 
-module.exports = { execFfmpeg, installFluentFfmpegQueue, FfmpegBusyError };
+module.exports = { execFfmpeg, installFluentFfmpegQueue, FfmpegBusyError, runWithPriority, hasPriority };

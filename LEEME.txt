@@ -10,6 +10,15 @@ Qué hace el bot:
   #recortar [barras|blur]    deja un video en 1:1 (recorta los lados,
                              barras negras o fondo difuminado)
   #s-name "paquete" "autor"  le cambia el nombre y el autor a un sticker
+  #grupos on / #grupos off   (solo el dueño) deja que el bot funcione
+                             o no en grupos
+  #privado on / #privado off (solo el dueño) deja que el bot funcione
+                             o no en chats privados
+  #listagrupos               (solo el dueño) muestra los grupos del bot
+  #permitir <número>         (solo el dueño) el bot solo funciona en los
+                             grupos que permitas
+  #quitar <número>           (solo el dueño) quita un grupo de los
+                             permitidos
 
 Envía la foto o el video con el comando escrito, o responde a un mensaje
 con el comando.

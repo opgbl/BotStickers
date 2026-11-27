@@ -13,8 +13,11 @@ así que puedes abrirlos y leer lo que hacen.
 - Se conecta a tu WhatsApp como dispositivo vinculado, igual que
   WhatsApp Web.
 - Responde solo cuando alguien manda un comando (#s, #s+a, #toimg,
-  #tomp4, #recortar, #s-name). Nunca manda mensajes por su cuenta ni
-  publica estados.
+  #tomp4, #recortar, #s-name y los del dueño). Nunca manda mensajes por
+  su cuenta ni publica estados.
+- Los comandos del dueño (#grupos, #privado, #listagrupos, #permitir y
+  #quitar) solo funcionan con tu número personal. Si otra persona los
+  manda, el bot no le contesta.
 - Convierte en stickers las fotos y videos que le mandan, y borra solo
   los archivos temporales.
 
@@ -30,8 +33,10 @@ así que puedes abrirlos y leer lo que hacen.
   son los sitios oficiales.
 - Cuando arranca, consulta en GitHub cuál es la versión actual de
   WhatsApp Web. Después solo habla con WhatsApp.
+- Al iniciarlo, revisa en GitHub si hay una versión nueva del bot. Solo
+  la descarga si tú aceptas.
 - Si alguien usa `#s <link>`, el bot baja ese video del sitio del link
-  (TikTok, Instagram, YouTube, X o Facebook) con yt-dlp.
+  (TikTok, Facebook o X) con yt-dlp.
 
 #### Dónde quedan tus datos
 
@@ -54,13 +59,21 @@ dentro de la carpeta del bot.
 También puedes cerrar la sesión desde WhatsApp, en Dispositivos
 vinculados.
 
+Tu número de dueño se guarda en `config/owners.json`, y lo que eliges con
+#grupos, #privado y #permitir se guarda en `config/settings.json`. Los
+dos archivos se quedan en tu teléfono o en tu PC.
+
 #### Cosas a tener en cuenta
 
 - WhatsApp no permite oficialmente bots en cuentas normales, así que
   hay un riesgo pequeño de que bloqueen el número. Si te preocupa, usa
   un número que no sea el principal.
 - Lo mejor es que el bot lo uses solo tú o un grupo pequeño. Mientras
-  menos gente mande comandos, menos riesgo hay.
+  menos gente mande comandos, menos riesgo hay. Con `#privado off` el
+  bot deja de responder en chats privados, y con `#permitir` puedes
+  dejarlo solo en los grupos que elijas.
+- Escribe bien tu número de dueño. La persona que tenga ese número
+  puede usar el bot sin límites y manejar sus comandos.
 - Publicar el número del bot es un riesgo. Si mucha gente le escribe,
   el bot manda muchos mensajes seguidos, y WhatsApp puede tomarlo como
   spam y bloquear el número. Si además algunas personas lo reportan,
@@ -83,9 +96,10 @@ https://github.com/user-attachments/assets/dbd03b35-76f3-4806-a1fa-f1958b2dbc60
 | --- | --- |
 | `#s` | Convierte una foto o video en sticker |
 | `#s "hola"` | Sticker con el texto "hola" abajo |
-| `#s <link>` | Sticker desde un link (TikTok, Instagram, YouTube, X, Facebook), recortado cuadrado y centrado |
+| `#s <link>` | Sticker desde un link (TikTok, Facebook o X), recortado cuadrado y centrado |
 | `#s <link> completo` | Igual, pero con el video completo centrado (sin recortar) |
 | `#s+a` | Sticker de video con sonido |
+| `#s+a <link>` | Sticker con sonido desde un link |
 | `#toimg` | Sticker a imagen |
 | `#tomp4` | Sticker animado a video |
 | `#recortar` | Recorta las dimensiones de un video a 1:1 |
@@ -93,13 +107,40 @@ https://github.com/user-attachments/assets/dbd03b35-76f3-4806-a1fa-f1958b2dbc60
 
 Manda el comando junto con la foto o el video, o respondiendo a un mensaje.
 
-**Videos largos:** si el video dura más de 12 s, sale en varios stickers de 8 s
-(máximo 4, o sea los primeros ~32 s). Con `#s+a` cada parte lleva su pedazo de audio.
+### Comandos para el dueño
 
-**Videos con texto arriba y abajo** (tipo "qué pasaría si"): si el video del centro es
-16:9, el bot lo detecta (es la parte que se mueve) y hace el sticker solo con esa franja.
-Funciona con links y con videos enviados. Agrega `completo` para no recortar
-(`#s+a completo`).
+El dueño es tu número personal. El bot te lo pide la primera vez que lo
+inicias, después de elegir cómo vincularlo, y lo guarda en
+`config/owners.json`. Solo ese número puede usar estos comandos. Si otra
+persona los manda, el bot no le contesta.
+
+Al dueño el bot le funciona siempre, aunque esté apagado en grupos o en
+chats privados.
+
+| Comando | Qué hace |
+| --- | --- |
+| `#grupos on` / `#grupos off` | Deja que el bot funcione o no en grupos |
+| `#privado on` / `#privado off` | Deja que el bot funcione o no en chats privados |
+| `#listagrupos` | Muestra los grupos donde está el bot |
+| `#permitir <número>` | Hace que el bot solo funcione en los grupos que permitas |
+| `#quitar <número>` | Quita un grupo de los permitidos |
+
+El número de `#permitir` y `#quitar` es el que aparece en `#listagrupos`.
+También puedes mandar `#permitir` o `#quitar` dentro del grupo, sin número.
+Si no hay grupos permitidos, el bot funciona en todos.
+
+### Stickers desde links
+
+Manda `#s` o `#s+a` seguido del link de un video, por ejemplo
+`#s https://vm.tiktok.com/...`. El bot baja el video, le quita los bordes
+negros y lo recorta en cuadrado. Si agregas `completo`, no lo recorta y el
+video sale entero. Con `#s+a` el sticker lleva el sonido del video.
+
+Solo acepta links de TikTok, Facebook y X (Twitter). Con
+cualquier otro sitio responde que no está permitido.
+
+El video puede pesar hasta 50MB y durar hasta 2 minutos. El sticker usa los
+primeros 12 segundos.
 
 **Links:** `#s <link>` necesita [yt-dlp](https://github.com/yt-dlp/yt-dlp). Es opcional:
 sin él, todo lo demás funciona igual.
@@ -108,6 +149,43 @@ sin él, todo lo demás funciona igual.
 - Windows: `winget install yt-dlp.yt-dlp`
 - Linux: instala el paquete `yt-dlp` o pon el ejecutable en `bin/yt-dlp`
   (también se puede indicar la ruta con la variable `YTDLP_PATH`).
+
+## Rendimiento
+
+<details>
+<summary><b>Velocidad del bot (toca para ver)</b></summary>
+
+El bot hace los stickers en el mismo teléfono o PC donde lo instalaste, así
+que la velocidad depende de ese dispositivo. En un teléfono de gama baja los
+stickers tardan más que en uno de gama alta o en una PC.
+
+Las fotos salen rápido casi en cualquier dispositivo. Los videos tardan más,
+porque el bot los convierte varias veces, bajando la calidad cada vez, hasta
+que el sticker pesa lo que WhatsApp permite. `#s+a` tarda un poco más porque
+también saca el audio. Con un link, primero tiene que bajar el video, así que
+ahí también cuenta tu internet.
+
+El bot convierte hasta 3 videos a la vez. Si llegan más, esperan su turno.
+Si hay más de 30 esperando, reacciona con 🕐 y no hace ese sticker. Los
+videos del dueño no hacen fila: pasan primero apenas se libera un espacio y
+nunca reciben 🕐.
+
+En Termux puedes cambiar cuántos convierte a la vez al iniciar el bot. En un
+teléfono de gama alta puedes subirlo a 5:
+
+```bash
+cd ~/botstickers && FFMPEG_MAX_CONCURRENT=5 bash start.sh
+```
+
+Si tu teléfono es de gama baja y Termux se cierra solo mientras hace
+stickers, bájalo a 1 con `FFMPEG_MAX_CONCURRENT=1`.
+
+Para que vaya más rápido:
+
+- Desactiva el ahorro de batería para Termux. Si está activado, Android
+  puede frenar el bot o cerrarlo.
+
+</details>
 
 # EL NUMERO TIENE QUE ESTAR TODO JUNTO CON CODIGO DE AREA DE PAÍS Y SIN ESPACIOS POR EJEMPLO:
 +502 1234 5678 : (Esto no debe tener espacios)
@@ -154,8 +232,8 @@ Cuando haya una versión nueva, detén el bot y escribe:
 cd ~/botstickers && git pull && npm install --omit=dev --no-audit --no-fund && bash start.sh
 ```
 
-No pierdes la sesión: la carpeta `baileys_auth_info` y `config/owners.json`
-no se tocan al actualizar.
+No pierdes la sesión ni tus ajustes: la carpeta `baileys_auth_info`,
+`config/owners.json` y `config/settings.json` no se tocan al actualizar.
 
 ### Problemas de conexión o volver a vincular
 
@@ -213,8 +291,10 @@ Abre `iniciar.bat` otra vez. No hace falta vincularlo de nuevo.
 ### Actualizar el bot
 
 Detén el bot, descarga otra vez el ZIP y descomprímelo. Copia a la
-carpeta nueva la carpeta `baileys_auth_info` y el archivo
-`config/owners.json` de la vieja, y abre `iniciar.bat`.
+carpeta nueva la carpeta `baileys_auth_info` y los archivos
+`config/owners.json` y `config/settings.json` de la vieja, y abre
+`iniciar.bat`. Si `config/settings.json` no existe, es porque nunca usaste
+los comandos del dueño.
 
 ### Problemas de conexión o volver a vincular
 

@@ -8,3 +8,4 @@ tmp/
 *.zip
 *.mp4
 bin/
+config/settings.json

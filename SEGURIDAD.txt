@@ -8,8 +8,12 @@ Qué hace
 
 - Se conecta a tu WhatsApp como dispositivo vinculado, igual que
   WhatsApp Web.
-- Responde solo cuando alguien manda un comando (#s, #toimg, #tomp4,
-  #s-name). Nunca manda mensajes por su cuenta ni publica estados.
+- Responde solo cuando alguien manda un comando (#s, #s+a, #toimg,
+  #tomp4, #recortar, #s-name y los del dueño). Nunca manda mensajes
+  por su cuenta ni publica estados.
+- Los comandos del dueño (#grupos, #privado, #listagrupos, #permitir y
+  #quitar) solo funcionan con tu número personal. Si otra persona los
+  manda, el bot no le contesta.
 - Convierte en stickers las fotos y videos que le mandan, y borra solo
   los archivos temporales.
 
@@ -27,6 +31,11 @@ A qué se conecta
   son los sitios oficiales.
 - Cuando arranca, consulta en GitHub cuál es la versión actual de
   WhatsApp Web. Después solo habla con WhatsApp.
+- Al iniciarlo, revisa en GitHub si hay una versión nueva del bot. Solo
+  la descarga si tú aceptas.
+- Si alguien usa #s <link>, el bot baja ese video del sitio del link
+  (TikTok, Facebook o X) con yt-dlp. Otros sitios no están
+  permitidos.
 
 
 Dónde quedan tus datos
@@ -36,6 +45,10 @@ teléfono y no se sube a ningún lado. Para borrarla, cierra el bot y
 borra esa carpeta. También puedes cerrar la sesión desde WhatsApp, en
 Dispositivos vinculados.
 
+Tu número de dueño se guarda en config/owners.json, y lo que eliges con
+#grupos, #privado y #permitir se guarda en config/settings.json. Los
+dos archivos se quedan en tu teléfono.
+
 
 Cosas a tener en cuenta
 
@@ -43,7 +56,11 @@ Cosas a tener en cuenta
   hay un riesgo pequeño de que bloqueen el número. Si te preocupa, usa
   un número que no sea el principal.
 - Lo mejor es que el bot lo uses solo tú o un grupo pequeño. Mientras
-  menos gente mande comandos, menos riesgo hay.
+  menos gente mande comandos, menos riesgo hay. Con "#privado off" el
+  bot deja de responder en chats privados, y con "#permitir" puedes
+  dejarlo solo en los grupos que elijas.
+- Escribe bien tu número de dueño. La persona que tenga ese número
+  puede usar el bot sin límites y manejar sus comandos.
 - Publicar el número del bot es un riesgo. Si mucha gente le escribe,
   el bot manda muchos mensajes seguidos, y WhatsApp puede tomarlo como
   spam y bloquear el número. Si además algunas personas lo reportan,
