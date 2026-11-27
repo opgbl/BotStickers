@@ -200,7 +200,7 @@ Instala Termux desde [F-Droid](https://f-droid.org/packages/com.termux/),
 y escribe:
 
 ```bash
-pkg update -y && pkg install -y git && git clone https://github.com/opgbl/botstickers ~/botstickers && cd ~/botstickers && bash start.sh
+pkg update -y && pkg upgrade -y && pkg install -y git && git clone https://github.com/opgbl/botstickers ~/botstickers && cd ~/botstickers && bash start.sh
 ```
 
 La primera vez instala todo lo necesario y te pregunta cómo vincular el
