@@ -256,6 +256,13 @@ Press `CTRL` + `C` (the `CTRL` key is in the row of keys above the
 keyboard). If it says "Reiniciando en 5 s", press `CTRL` + `C` again
 before it starts again.
 
+If Android closed Termux and the bot keeps replying even though you can't
+see its session anymore, stop it with:
+
+```bash
+pkill -f start.sh; pkill -f "node index.js"
+```
+
 To close Termux completely, type `exit` or tap "Exit" in the Termux
 notification.
 
@@ -267,6 +274,9 @@ cd ~/botstickers && bash start.sh
 
 You don't need to link it again: the session stays saved in the
 `baileys_auth_info` folder.
+
+If the bot was still running in the background, `start.sh` closes that
+copy before starting. That way there are never two copies at once.
 
 ### Update the bot
 

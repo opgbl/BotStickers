@@ -252,6 +252,13 @@ Presiona `CTRL` + `C` (la tecla `CTRL` está en la fila de teclas de
 arriba del teclado). Si sale "Reiniciando en 5 s", presiona `CTRL` + `C`
 otra vez antes de que vuelva a arrancar.
 
+Si Android cerró Termux y el bot sigue respondiendo aunque ya no ves su
+sesión, apágalo con:
+
+```bash
+pkill -f start.sh; pkill -f "node index.js"
+```
+
 Para cerrar Termux por completo, escribe `exit` o toca "Exit" en la
 notificación de Termux.
 
@@ -263,6 +270,9 @@ cd ~/botstickers && bash start.sh
 
 No hace falta vincularlo de nuevo: la sesión queda guardada en la carpeta
 `baileys_auth_info`.
+
+Si el bot seguía abierto en segundo plano, `start.sh` cierra esa copia
+antes de iniciar. Así nunca quedan dos copias a la vez.
 
 ### Actualizar el bot
 

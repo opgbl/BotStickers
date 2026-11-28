@@ -16,6 +16,32 @@ if [ "$IS_TERMUX" = 1 ] && case "$HERE" in /storage/*|/sdcard/*|/mnt/*) true;; *
   exec bash "$DEST/start.sh"
 fi
 
+stop_old_copy() {
+  [ -d /proc ] || return
+  local here dir pid cmd found="" alive=""
+  here=$(pwd -P)
+  for dir in /proc/[0-9]*; do
+    pid=${dir#/proc/}
+    [ "$pid" = "$$" ] || [ "$pid" = "$PPID" ] && continue
+    [ "$(readlink "$dir/cwd" 2>/dev/null)" = "$here" ] || continue
+    cmd=$(tr '\0' ' ' < "$dir/cmdline" 2>/dev/null)
+    case "$cmd" in
+      *node*" index.js"*|*"bash "*"start.sh"*) found="$found $pid" ;;
+    esac
+  done
+  [ -n "$found" ] || return
+  echo "El bot ya estaba abierto. Cerrando la copia anterior..."
+  kill $found 2>/dev/null
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    alive=""
+    for pid in $found; do kill -0 "$pid" 2>/dev/null && alive="$alive $pid"; done
+    [ -z "$alive" ] && break
+    sleep 1
+  done
+  [ -n "$alive" ] && kill -9 $alive 2>/dev/null
+}
+stop_old_copy
+
 if [ "$IS_TERMUX" = 1 ]; then
   NEED=""
   command -v node >/dev/null || NEED="$NEED nodejs-lts"
