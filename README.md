@@ -1,5 +1,7 @@
 # botstickers con sonido
 
+**Español** | [English](README.en.md)
+
 Bot de WhatsApp para hacer stickers. Funciona en Termux y en Windows.
 
 <details>
@@ -15,8 +17,8 @@ así que puedes abrirlos y leer lo que hacen.
 - Responde solo cuando alguien manda un comando (#s, #s+a, #toimg,
   #tomp4, #recortar, #s-name y los del dueño). Nunca manda mensajes por
   su cuenta ni publica estados.
-- Los comandos del dueño (#grupos, #privado, #listagrupos, #permitir y
-  #quitar) solo funcionan con tu número personal. Si otra persona los
+- Los comandos del dueño (#grupos, #privado, #limite, #listagrupos,
+  #permitir y #quitar) solo funcionan con tu número personal. Si otra persona los
   manda, el bot no le contesta.
 - Convierte en stickers las fotos y videos que le mandan, y borra solo
   los archivos temporales.
@@ -60,7 +62,7 @@ También puedes cerrar la sesión desde WhatsApp, en Dispositivos
 vinculados.
 
 Tu número de dueño se guarda en `config/owners.json`, y lo que eliges con
-#grupos, #privado y #permitir se guarda en `config/settings.json`. Los
+#grupos, #privado, #limite y #permitir se guarda en `config/settings.json`. Los
 dos archivos se quedan en tu teléfono o en tu PC.
 
 #### Cosas a tener en cuenta
@@ -121,6 +123,7 @@ chats privados.
 | --- | --- |
 | `#grupos on` / `#grupos off` | Deja que el bot funcione o no en grupos |
 | `#privado on` / `#privado off` | Deja que el bot funcione o no en chats privados |
+| `#limite on` / `#limite off` | Activa o quita el límite de comandos para todos |
 | `#listagrupos` | Muestra los grupos donde está el bot |
 | `#permitir <número>` | Hace que el bot solo funcione en los grupos que permitas |
 | `#quitar <número>` | Quita un grupo de los permitidos |
@@ -128,6 +131,41 @@ chats privados.
 El número de `#permitir` y `#quitar` es el que aparece en `#listagrupos`.
 También puedes mandar `#permitir` o `#quitar` dentro del grupo, sin número.
 Si no hay grupos permitidos, el bot funciona en todos.
+
+<details>
+<summary><b>Límite de uso (toca para ver)</b></summary>
+
+El bot limita cuántos comandos puede mandar cada persona y cada cuánto.
+Así WhatsApp tiene menos motivos para tomarlo como spam y el teléfono no
+se satura. También evita que una sola persona ocupe el bot todo el tiempo.
+
+Estos límites sirven sobre todo si decides que más personas usen el bot,
+por ejemplo en un grupo o si compartes su número. Si lo usas solo
+tú o un grupo pequeño, casi no se notan, y puedes apagarlos
+con `#limite off`.
+
+| Límite | Qué pasa si alguien se pasa |
+| --- | --- |
+| 3 s entre un comando y otro | El bot ignora el comando |
+| 15 s entre conversiones pesadas (`#s+a`, `#tomp4`, `#recortar`, `#s <link>`) | El bot ignora el comando |
+| 10 comandos cada 10 s por persona | Avisa cuánto falta |
+| 3 conversiones pesadas por minuto | Avisa cuánto falta |
+| 10 stickers por hora por persona | Avisa en cuántos minutos puede hacer más |
+| 25 comandos cada 10 s en un mismo grupo | Avisa en el grupo cuánto falta |
+
+El aviso sale una sola vez. Mientras tanto, el bot ignora los comandos de
+esa persona sin contestar.
+
+Al dueño no le aplica ningún límite, y sus comandos no cuentan para el
+límite del grupo.
+
+Con `#limite off` quitas estos límites para todos, y con `#limite on` los
+vuelves a activar. Aunque estén apagados, el bot sigue dejando una pausa
+corta entre cada mensaje y cada sticker que manda, y nunca envía más de
+20 stickers por minuto. Eso no se puede apagar, porque es lo que más protege
+el número de un bloqueo.
+
+</details>
 
 ### Stickers desde links
 
@@ -165,8 +203,10 @@ que el sticker pesa lo que WhatsApp permite. `#s+a` tarda un poco más porque
 también saca el audio. Con un link, primero tiene que bajar el video, así que
 ahí también cuenta tu internet.
 
-El bot convierte hasta 3 videos a la vez. Si llegan más, esperan su turno.
-Si hay más de 30 esperando, reacciona con 🕐 y no hace ese sticker. Los
+El bot convierte hasta 3 videos a la vez. Si llegan más, esperan su turno,
+y el bot le avisa a cada uno cuántos archivos hay antes que el suyo.
+Si una conversión tarda más de 2 minutos, el bot la cancela y avisa que
+tardó demasiado. Si hay más de 30 esperando, reacciona con 🕐 y no hace ese sticker. Los
 videos del dueño no hacen fila: pasan primero apenas se libera un espacio y
 nunca reciben 🕐.
 

@@ -1,6 +1,7 @@
 'use strict';
 
 const logger = require('./logger');
+const { hasPriority } = require('./ffmpegQueue');
 
 const STICKER_PER_MIN = 20;
 const STICKER_GAP_MS = [1000, 3000];
@@ -40,12 +41,15 @@ async function pump(lane) {
 }
 
 function schedule(kind, fn) {
-  if (kind === 'reaction' && lanes.general.queue.length >= DROP_REACTIONS_AT) {
+  const urgent = hasPriority();
+  if (kind === 'reaction' && !urgent && lanes.general.queue.length >= DROP_REACTIONS_AT) {
     return Promise.resolve(undefined);
   }
   const lane = kind === 'sticker' ? lanes.sticker : lanes.general;
   return new Promise((resolve, reject) => {
-    lane.queue.push({ fn, resolve, reject });
+    const job = { fn, resolve, reject, urgent };
+    const i = urgent ? lane.queue.findIndex((j) => !j.urgent) : -1;
+    lane.queue.splice(i < 0 ? lane.queue.length : i, 0, job);
     if (lane.queue.length % 10 === 0) {
       logger.info(`[sendLimiter] ${lane.queue.length} envíos en espera (${kind === 'sticker' ? 'stickers' : 'mensajes'}).`);
     }

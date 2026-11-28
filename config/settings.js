@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 
 const SETTINGS_FILE = path.join(__dirname, 'settings.json');
-const DEFAULTS = { groups: true, private: true, allowedGroups: [] };
+const DEFAULTS = { groups: true, private: true, rateLimit: true, allowedGroups: [] };
 
 function load() {
   try {

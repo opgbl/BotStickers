@@ -60,8 +60,8 @@ function checkRateLimit(userId, { chatId, isGroup = false, heavy = false, sticke
   }
 
   const checks = [];
-  if (isGroup && chatId) checks.push(['group', getBucket(groupBuckets, chatId, GROUP_WINDOW_MS, now), GROUP_MAX]);
   if (!exempt) {
+    if (isGroup && chatId) checks.push(['group', getBucket(groupBuckets, chatId, GROUP_WINDOW_MS, now), GROUP_MAX]);
     checks.push(['user', getBucket(userBuckets, userId, USER_WINDOW_MS, now), USER_MAX]);
     if (heavy) checks.push(['heavy', getBucket(heavyBuckets, userId, HEAVY_WINDOW_MS, now), HEAVY_MAX]);
     if (sticker) checks.push(['sticker', getBucket(stickerBuckets, userId, STICKER_WINDOW_MS, now), STICKER_MAX]);

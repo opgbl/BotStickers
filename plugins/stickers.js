@@ -9,7 +9,7 @@ const logger = require('../utils/logger');
 const { downloadContentFromMessage } = require('../utils/baileys');
 const { sendReaction, getMessageContent, unwrapMessage, filepathTemp } = require('../utils/common');
 const { sendSoundSticker } = require('../utils/soundSticker');
-const { FfmpegBusyError, hasPriority } = require('../utils/ffmpegQueue');
+const { FfmpegBusyError, hasPriority, withQueueNotice } = require('../utils/ffmpegQueue');
 const {
   findLink, parseLinkBody, downloadLink, buildLinkFilter, isYtDlpMissing, MISSING_MSG,
 } = require('../utils/linkMedia');
@@ -17,6 +17,8 @@ const {
 ffmpeg.setFfmpegPath(require('../utils/ffmpegBin').resolveFfmpegPath());
 
 const MAX_STICKER_JOBS = 30;
+const FFMPEG_TIMEOUT = 2 * 60 * 1000;
+const DOWNLOAD_TIMEOUT = 2 * 60 * 1000;
 const MAX_VIDEO_DURATION = 12;
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const STICKER_SIZE = 512;
@@ -77,7 +79,19 @@ function runFfmpeg(input, outputOptions, output, format, filter) {
     const cmd = ffmpeg(input).outputOptions(outputOptions);
     if (filter) cmd.videoFilters(filter);
     if (format) cmd.toFormat(format);
-    cmd.on('end', resolve).on('error', reject).save(output);
+    let timer = null;
+    const done = (fn) => (arg) => {
+      clearTimeout(timer);
+      fn(arg);
+    };
+    cmd.on('start', () => {
+      timer = setTimeout(() => {
+        logger.warn(`ffmpeg tardó más de ${FFMPEG_TIMEOUT / 1000} s y se canceló.`);
+        reject(new Error('ffmpeg timeout'));
+        cmd.kill('SIGKILL');
+      }, FFMPEG_TIMEOUT);
+    });
+    cmd.on('end', done(resolve)).on('error', done(reject)).save(output);
   });
 }
 
@@ -151,9 +165,30 @@ function getMedia(message) {
 }
 
 async function downloadMedia(content, type) {
-  const chunks = [];
-  for await (const chunk of await downloadContentFromMessage(content, type)) chunks.push(chunk);
-  return Buffer.concat(chunks);
+  let stream = null;
+  let timedOut = false;
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      timedOut = true;
+      logger.warn(`La descarga del archivo tardó más de ${DOWNLOAD_TIMEOUT / 1000} s y se canceló.`);
+      stream?.destroy();
+      reject(new Error('download timeout'));
+    }, DOWNLOAD_TIMEOUT);
+  });
+  const read = (async () => {
+    stream = await downloadContentFromMessage(content, type);
+    if (timedOut) return stream.destroy();
+    const chunks = [];
+    for await (const chunk of stream) chunks.push(chunk);
+    return Buffer.concat(chunks);
+  })();
+  read.catch(() => {});
+  try {
+    return await Promise.race([read, timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function convertToWebP(input, isVideo, overlayText, canShorten, preFilter = null) {
@@ -317,10 +352,12 @@ async function stickerFromLink({ message, sock, reply, fail, link, body, withSou
     input = downloaded.file;
     if (withSound && !downloaded.isVideo) return await fail('#s+a es para videos con audio. Ese link es una imagen.');
 
-    const preFilter = await buildLinkFilter(input, full);
-    await makeAndSendSticker({
-      sock, message, reply, input, isVideo: downloaded.isVideo,
-      overlayText: parseOverlayText(cleanBody), withSound, creatorName, preFilter,
+    await withQueueNotice(queueReply(reply), async () => {
+      const preFilter = await buildLinkFilter(input, full);
+      await makeAndSendSticker({
+        sock, message, reply, input, isVideo: downloaded.isVideo,
+        overlayText: parseOverlayText(cleanBody), withSound, creatorName, preFilter,
+      });
     });
   } catch (error) {
     if (error instanceof FfmpegBusyError) return sendReaction(sock, message, '🕐');
@@ -332,6 +369,10 @@ async function stickerFromLink({ message, sock, reply, fail, link, body, withSou
     if (input) await fs.unlink(input).catch(() => {});
   }
 }
+
+const queueReply = (reply) => (ahead) => reply(
+  `Hay ${ahead} ${ahead === 1 ? 'archivo' : 'archivos'} antes que el tuyo. Tu sticker sale en un momento.`,
+);
 
 const sizeText = (bytes) => `Pesa ${(bytes / 1048576).toFixed(1)}MB. Máximo ${MAX_FILE_SIZE / 1048576}MB.`;
 
@@ -372,10 +413,10 @@ const handler = async (message, sock, reply) => {
     if (buffer.length > MAX_FILE_SIZE) return await fail(sizeText(buffer.length));
     await fs.writeFile(input, buffer);
 
-    await makeAndSendSticker({
+    await withQueueNotice(queueReply(reply), () => makeAndSendSticker({
       sock, message, reply, input, isVideo: media.isVideo, overlayText: parseOverlayText(body),
       withSound, creatorName, seconds: media.content.seconds,
-    });
+    }));
   } catch (error) {
     if (error instanceof FfmpegBusyError) return sendReaction(sock, message, '🕐');
     logger.error(`Error en #sticker: ${error?.stack || error}`);

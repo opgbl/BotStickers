@@ -14,6 +14,12 @@ const OPTIONS = {
     off: 'Listo, el bot ya no funciona en chats privados. Tú lo puedes seguir usando.',
     status: (on) => `El bot ${on ? 'funciona' : 'no funciona'} en chats privados.`,
   },
+  '#limite': {
+    key: 'rateLimit',
+    on: 'Listo, el límite de comandos está activado.',
+    off: 'Listo, quité el límite de comandos. Ahora todos pueden usar el bot sin esperar. Actívalo otra vez con "#limite on".',
+    status: (on) => `El límite de comandos está ${on ? 'activado' : 'desactivado'}.`,
+  },
 };
 
 async function fetchGroups(sock) {
@@ -94,7 +100,7 @@ const handler = async (message, sock, reply, isGroup, body) => {
 
 module.exports = {
   command: '#grupos',
-  aliases: ['#privado', '#listagrupos', '#permitir', '#quitar'],
+  aliases: ['#privado', '#limite', '#listagrupos', '#permitir', '#quitar'],
   ownerOnly: true,
   handler,
 };

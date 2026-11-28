@@ -8,7 +8,7 @@ const logger = require('./utils/logger');
 const { getMessageContent } = require('./utils/common');
 const { checkRateLimit, rateLimitMessage, HEAVY_COMMANDS, STICKER_COMMANDS } = require('./utils/rateLimit');
 const { isOwner, isOwnerMessage, addOwner, OWNERS } = require('./config/owner');
-const { isChatAllowed } = require('./config/settings');
+const { isChatAllowed, getSetting } = require('./config/settings');
 const { findLink } = require('./utils/linkMedia');
 const { installSoundStickerSupport } = require('./utils/soundSticker');
 const { installSendLimiter } = require('./utils/sendLimiter');
@@ -162,13 +162,13 @@ async function handleMessage(message) {
 
   const reply = async (txt) => {
     try {
-      return await sock.sendMessage(chatId, { text: txt }, { quoted: message });
+      return await sock.sendMessage(chatId, { text: `*[bot]* ${txt}` }, { quoted: message });
     } catch (err) {
       logger.error(`Error en reply: ${err.message}`);
     }
   };
 
-  const limit = checkRateLimit(senderId, {
+  const limit = getSetting('rateLimit') === false ? { limited: false } : checkRateLimit(senderId, {
     chatId,
     isGroup,
     heavy: HEAVY_COMMANDS.has(cmd) || (STICKER_COMMANDS.has(cmd) && !!findLink(body)),
@@ -329,4 +329,5 @@ async function connectToWhatsApp() {
 process.on('unhandledRejection', (r) => logger.error(`Unhandled Rejection: ${r?.stack || r}`));
 process.on('uncaughtException', (e) => logger.error(`Uncaught Exception: ${e?.stack || e}`));
 
+console.log('Si encuentras un error, avísalo en https://github.com/opgbl/botstickers/issues\n');
 connectToWhatsApp();
